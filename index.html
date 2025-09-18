@@ -7,42 +7,118 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <style>
     #map { height: 100vh; }
+    .control-box {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 6px 10px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
+  <div class="control-box">
+    搜尋範圍：
+    <select id="radiusSelect">
+      <option value="100">100 公尺</option>
+      <option value="300">300 公尺</option>
+      <option value="500" selected>500 公尺</option>
+      <option value="1000">1000 公尺</option>
+    </select>
+    <button id="searchBtn">重新搜尋</button>
+  </div>
   <div id="map"></div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
     // 初始化地圖
-    const map = L.map('map').setView([25.0330, 121.5654], 15);
+    const map = L.map('map', { zoomControl: false }).setView([25.0330, 121.5654], 15);
+
+    // 把縮放控制放到右下角
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // 加入地圖圖層
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20,
     }).addTo(map);
 
-    // 使用者 icon
-    const userIcon = L.icon({
-      iconUrl: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
-      popupAnchor: [0, -40]
-    });
+    // 自訂 icon
+    const icons = {
+      user: L.icon({
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40]
+      }),
+      park: L.icon({
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/427/427735.png", // 樹
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -30]
+      }),
+      water: L.icon({
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/728/728093.png", // 水滴
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -30]
+      }),
+      market: L.icon({
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/3076/3076406.png", // 蔬果
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -30]
+      }),
+      store: L.divIcon({
+        html: "🏪",
+        className: "",
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
+      })
+    };
 
     let userMarker;
+    let lastLocation;
+    let poiMarkers = [];
+    let routeLine;
 
     // 取得定位
     map.locate({ setView: true, maxZoom: 16 });
 
     map.on("locationfound", (e) => {
+      lastLocation = e.latlng;
       if (userMarker) map.removeLayer(userMarker);
-      userMarker = L.marker(e.latlng, { icon: userIcon }).addTo(map)
+      userMarker = L.marker(e.latlng, { icon: icons.user }).addTo(map)
         .bindPopup("您在這裡").openPopup();
 
-      // 搜尋附近 500 公尺內的公園（Overpass API）
+      searchNearby();
+    });
+
+    map.on("locationerror", () => {
+      alert("無法取得您的位置");
+    });
+
+    // 搜尋附近 POI
+    function searchNearby() {
+      if (!lastLocation) return;
+      const radius = document.getElementById("radiusSelect").value;
+
+      // 清除舊的 POI
+      poiMarkers.forEach(m => map.removeLayer(m));
+      poiMarkers = [];
+
       const query = `
         [out:json];
-        node(around:500, ${e.latitude}, ${e.longitude})[leisure=park];
+        (
+          node(around:${radius}, ${lastLocation.lat}, ${lastLocation.lng})[leisure=park];
+          node(around:${radius}, ${lastLocation.lat}, ${lastLocation.lng})[amenity=drinking_water];
+          node(around:${radius}, ${lastLocation.lat}, ${lastLocation.lng})[shop=convenience];
+          node(around:${radius}, ${lastLocation.lat}, ${lastLocation.lng})[shop=supermarket];
+        );
         out;
       `;
 
@@ -53,21 +129,37 @@
       .then(res => res.json())
       .then(data => {
         data.elements.forEach(p => {
-          const park = L.marker([p.lat, p.lon]).addTo(map)
-            .bindPopup("公園");
-          park.on("click", () => {
-            getORSRoute([e.longitude, e.latitude], [p.lon, p.lat]); // 注意經緯度順序
+          let icon = icons.park;
+          let label = "公園";
+          if (p.tags.amenity === "drinking_water") {
+            icon = icons.water;
+            label = "飲水機";
+          } else if (p.tags.shop === "supermarket") {
+            icon = icons.market;
+            label = "市場";
+          } else if (p.tags.shop === "convenience") {
+            icon = icons.store;
+            label = "便利商店";
+          }
+
+          const marker = L.marker([p.lat, p.lon], { icon }).addTo(map)
+            .bindPopup(label);
+          poiMarkers.push(marker);
+
+          // 點擊後規劃路線
+          marker.on("click", () => {
+            getORSRoute([lastLocation.lng, lastLocation.lat], [p.lon, p.lat]);
           });
         });
       });
-    });
+    }
 
-    map.on("locationerror", () => {
-      alert("無法取得您的位置");
-    });
-
-    // 呼叫 ORS API：計算無障礙路線
+    // ORS API 路線規劃
     function getORSRoute(start, end) {
+      if (routeLine) {
+        map.removeLayer(routeLine);
+      }
+
       const url = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson";
       fetch(url, {
         method: "POST",
@@ -77,7 +169,7 @@
         },
         body: JSON.stringify({
           coordinates: [start, end],
-          extra_info: ["wheelchair"] // 無障礙資訊
+          extra_info: ["wheelchair"]
         })
       })
       .then(res => {
@@ -86,13 +178,17 @@
       })
       .then(json => {
         const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-        L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
+        routeLine = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
+        map.fitBounds(routeLine.getBounds());
       })
       .catch(err => {
         console.error(err);
         alert("路線規劃失敗：" + err.message);
       });
     }
+
+    // 綁定按鈕
+    document.getElementById("searchBtn").addEventListener("click", searchNearby);
   </script>
 </body>
 </html>
