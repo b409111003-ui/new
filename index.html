@@ -37,11 +37,8 @@
   <script>
     // 初始化地圖
     const map = L.map('map', { zoomControl: false }).setView([25.0330, 121.5654], 15);
-
-    // 把縮放控制放到右下角
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // 加入地圖圖層
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20,
     }).addTo(map);
@@ -55,19 +52,19 @@
         popupAnchor: [0, -40]
       }),
       park: L.icon({
-        iconUrl: "https://cdn-icons-png.flaticon.com/512/427/427735.png", // 樹
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/427/427735.png",
         iconSize: [32, 32],
         iconAnchor: [16, 32],
         popupAnchor: [0, -30]
       }),
       water: L.icon({
-        iconUrl: "https://cdn-icons-png.flaticon.com/512/728/728093.png", // 水滴
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/728/728093.png",
         iconSize: [32, 32],
         iconAnchor: [16, 32],
         popupAnchor: [0, -30]
       }),
       market: L.icon({
-        iconUrl: "https://cdn-icons-png.flaticon.com/512/3076/3076406.png", // 蔬果
+        iconUrl: "https://cdn-icons-png.flaticon.com/512/3076/3076406.png",
         iconSize: [32, 32],
         iconAnchor: [16, 32],
         popupAnchor: [0, -30]
@@ -81,35 +78,35 @@
       })
     };
 
-    let userMarker;
-    let lastLocation;
-    let poiMarkers = [];
-    let routeLine;
+    let userMarker, lastLocation, poiMarkers = [], routeLine, searchCircle;
 
-    // 取得定位
+    // 定位
     map.locate({ setView: true, maxZoom: 16 });
-
     map.on("locationfound", (e) => {
       lastLocation = e.latlng;
       if (userMarker) map.removeLayer(userMarker);
-      userMarker = L.marker(e.latlng, { icon: icons.user }).addTo(map)
-        .bindPopup("您在這裡").openPopup();
-
+      userMarker = L.marker(e.latlng, { icon: icons.user }).addTo(map).bindPopup("您在這裡").openPopup();
       searchNearby();
     });
-
-    map.on("locationerror", () => {
-      alert("無法取得您的位置");
-    });
+    map.on("locationerror", () => alert("無法取得您的位置"));
 
     // 搜尋附近 POI
     function searchNearby() {
       if (!lastLocation) return;
       const radius = document.getElementById("radiusSelect").value;
 
-      // 清除舊的 POI
+      // 清掉舊的 POI & 圓圈
       poiMarkers.forEach(m => map.removeLayer(m));
       poiMarkers = [];
+      if (searchCircle) map.removeLayer(searchCircle);
+
+      // 畫搜尋範圍圓圈
+      searchCircle = L.circle(lastLocation, {
+        radius: radius,
+        color: "red",
+        weight: 1,
+        fillOpacity: 0.1
+      }).addTo(map);
 
       const query = `
         [out:json];
@@ -122,44 +119,25 @@
         out;
       `;
 
-      fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        body: query
-      })
+      fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query })
       .then(res => res.json())
       .then(data => {
         data.elements.forEach(p => {
-          let icon = icons.park;
-          let label = "公園";
-          if (p.tags.amenity === "drinking_water") {
-            icon = icons.water;
-            label = "飲水機";
-          } else if (p.tags.shop === "supermarket") {
-            icon = icons.market;
-            label = "市場";
-          } else if (p.tags.shop === "convenience") {
-            icon = icons.store;
-            label = "便利商店";
-          }
+          let icon = icons.park, label = "公園";
+          if (p.tags.amenity === "drinking_water") { icon = icons.water; label = "飲水機"; }
+          else if (p.tags.shop === "supermarket") { icon = icons.market; label = "市場"; }
+          else if (p.tags.shop === "convenience") { icon = icons.store; label = "便利商店"; }
 
-          const marker = L.marker([p.lat, p.lon], { icon }).addTo(map)
-            .bindPopup(label);
+          const marker = L.marker([p.lat, p.lon], { icon }).addTo(map).bindPopup(label);
           poiMarkers.push(marker);
-
-          // 點擊後規劃路線
-          marker.on("click", () => {
-            getORSRoute([lastLocation.lng, lastLocation.lat], [p.lon, p.lat]);
-          });
+          marker.on("click", () => getORSRoute([lastLocation.lng, lastLocation.lat], [p.lon, p.lat]));
         });
       });
     }
 
-    // ORS API 路線規劃
+    // ORS API 路線
     function getORSRoute(start, end) {
-      if (routeLine) {
-        map.removeLayer(routeLine);
-      }
-
+      if (routeLine) map.removeLayer(routeLine);
       const url = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson";
       fetch(url, {
         method: "POST",
@@ -167,10 +145,7 @@
           "Authorization": "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjdhMjE3MWZjYzE3NjRhZmViY2ZiYzg4NWY2MzRiNmMxIiwiaCI6Im11cm11cjY0In0=",
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          coordinates: [start, end],
-          extra_info: ["wheelchair"]
-        })
+        body: JSON.stringify({ coordinates: [start, end], extra_info: ["wheelchair"] })
       })
       .then(res => {
         if (!res.ok) throw new Error(res.statusText);
@@ -181,10 +156,7 @@
         routeLine = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
         map.fitBounds(routeLine.getBounds());
       })
-      .catch(err => {
-        console.error(err);
-        alert("路線規劃失敗：" + err.message);
-      });
+      .catch(err => alert("路線規劃失敗：" + err.message));
     }
 
     // 綁定按鈕
