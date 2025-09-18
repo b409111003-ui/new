@@ -6,7 +6,17 @@
   <title>社區散步友善地圖</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <style>
-    #map { height: 100vh; }
+    /* 全域重置，確保地圖高度正常 */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #map { 
+      height: 100vh; 
+      width: 100%;
+    }
 
     .controls {
       position: absolute;
@@ -16,9 +26,9 @@
       padding: 10px;
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      z-index: 10000;       /* 提高層級，保證在地圖上方 */
+      z-index: 10000;       /* 確保在地圖上方 */
       font-size: 14px;
-      pointer-events: auto; /* 確保可以點擊 */
+      pointer-events: auto; /* 可點擊 */
     }
 
     .controls label { display: block; margin: 4px 0; }
@@ -30,6 +40,7 @@
   </style>
 </head>
 <body>
+  <!-- 控制面板 -->
   <div class="controls">
     <label><input type="checkbox" value="water"> 飲水機</label>
     <label><input type="checkbox" value="convenience"> 便利商店</label>
@@ -43,4 +54,135 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
-    // 初始化地圖，放大縮小鍵移到
+    // 初始化地圖
+    const map = L.map('map', { zoomControl: false }).setView([25.0330, 121.5654], 15);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // 使用者定位
+    let userMarker;
+    navigator.geolocation.watchPosition(pos => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      if (!userMarker) {
+        userMarker = L.marker([lat, lon]).addTo(map).bindPopup("你在這裡");
+        map.setView([lat, lon], 16);
+      } else {
+        userMarker.setLatLng([lat, lon]);
+      }
+    });
+
+    // Icon 定義
+    const icons = {
+      water: L.icon({ iconUrl: "https://cdn-icons-png.flaticon.com/512/2910/2910768.png", iconSize: [30, 30] }),
+      convenience: L.icon({ iconUrl: "https://openmoji.org/data/color/svg/1F3EA.svg", iconSize: [30, 30] }),
+      market: L.icon({ iconUrl: "https://cdn-icons-png.flaticon.com/512/415/415682.png", iconSize: [30, 30] }),
+      park: L.icon({ iconUrl: "https://cdn-icons-png.flaticon.com/512/427/427735.png", iconSize: [30, 30] })
+    };
+
+    // 分類對應 OSM
+    const categories = {
+      water: 'node["amenity"="drinking_water"](around:RADIUS,LAT,LON);',
+      convenience: 'node["shop"="convenience"](around:RADIUS,LAT,LON);',
+      market: 'node["amenity"="marketplace"](around:RADIUS,LAT,LON);',
+      park: 'way["leisure"="park"](around:RADIUS,LAT,LON);'
+    };
+
+    // 組合 Overpass Query
+    function buildOverpassQuery(lat, lon, radius, selections) {
+      if (!selections || selections.length === 0) return null;
+      let body = '[out:json][timeout:25];(';
+      for (const sel of selections) {
+        let fragment = categories[sel];
+        fragment = fragment.replace(/RADIUS/g, radius).replace(/LAT/g, lat).replace(/LON/g, lon);
+        body += "\n" + fragment;
+      }
+      body += '\n);out center;';
+      return body;
+    }
+
+    // 搜尋與顯示
+    let searchMarkers = [];
+    let routeLayer;
+    const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjdhMjE3MWZjYzE3NjRhZmViY2ZiYzg4NWY2MzRiNmMxIiwiaCI6Im11cm11cjY0In0=";
+
+    document.getElementById("searchBtn").addEventListener("click", () => {
+      if (!userMarker) { alert("尚未取得定位"); return; }
+
+      const pos = userMarker.getLatLng();
+      const checked = Array.from(document.querySelectorAll("input[type=checkbox]:checked")).map(c => c.value);
+      const radius = parseInt(document.getElementById("radiusInput").value) || 1000;
+      const query = buildOverpassQuery(pos.lat, pos.lng, radius, checked);
+      if (!query) { alert("請先選擇要搜尋的類別"); return; }
+
+      // 清除舊結果
+      searchMarkers.forEach(m => map.removeLayer(m));
+      searchMarkers = [];
+      if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+
+      fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(query)
+      })
+      .then(r => r.json())
+      .then(data => {
+        data.elements.forEach(el => {
+          const lat = el.lat || el.center?.lat;
+          const lon = el.lon || el.center?.lon;
+          if (!lat || !lon) return;
+
+          let matchedType = null;
+          if (el.tags) {
+            if (el.tags.amenity === "drinking_water") matchedType = "water";
+            else if (el.tags.shop === "convenience") matchedType = "convenience";
+            else if (el.tags.amenity === "marketplace") matchedType = "market";
+            else if (el.tags.leisure === "park") matchedType = "park";
+          }
+
+          const marker = L.marker([lat, lon], { icon: matchedType ? icons[matchedType] : undefined }).addTo(map);
+          marker.bindPopup(`
+            <b>${el.tags.name || matchedType || "地點"}</b><br>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}" target="_blank">導航</a><br>
+            <button onclick="planRoute(${lat},${lon})">規劃無障礙路線</button>
+          `);
+          searchMarkers.push(marker);
+        });
+      })
+      .catch(err => { console.error(err); alert("查詢失敗，請稍後再試"); });
+    });
+
+    // ORS 無障礙路線
+    function planRoute(destLat, destLon) {
+      if (!userMarker) return;
+      const start = userMarker.getLatLng();
+      if (routeLayer) map.removeLayer(routeLayer);
+
+      fetch("https://api.openrouteservice.org/v2/directions/foot-walking", {
+        method: "POST",
+        headers: {
+          "Authorization": ORS_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          coordinates: [[start.lng, start.lat], [destLon, destLat]],
+          options: { "avoid_features": ["steps"] }
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+        routeLayer = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
+        map.fitBounds(routeLayer.getBounds());
+      })
+      .catch(err => { console.error(err); alert("路線規劃失敗"); });
+    }
+
+    window.planRoute = planRoute;
+  </script>
+</body>
+</html>
