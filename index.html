@@ -1,144 +1,22 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>社區散步友善地圖</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-  <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-      padding: 0;
+<script>
+  // 使用者位置 icon（全身人）
+  const userIcon = L.icon({
+    iconUrl: "https://openmoji.org/data/color/svg/1F9D1.svg", // 🧑 全身人
+    iconSize: [40, 40], // 調整大小
+    iconAnchor: [20, 40], // 底部對齊腳的位置
+    popupAnchor: [0, -40] // 提示框往上移
+  });
+
+  // 使用者位置
+  let userMarker;
+  navigator.geolocation.watchPosition(pos => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    if (!userMarker) {
+      userMarker = L.marker([lat, lon], { icon: userIcon }).addTo(map).bindPopup("你在這裡");
+      map.setView([lat, lon], 16);
+    } else {
+      userMarker.setLatLng([lat, lon]);
     }
-    .controls {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: white;
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      z-index: 10000;
-      font-size: 14px;
-      pointer-events: auto;
-    }
-    .controls label { display: block; margin-bottom: 4px; }
-    .controls input[type="number"] { width: 60px; }
-    .controls button { margin-top: 5px; display: block; width: 100%; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <div class="controls">
-    <label><input type="checkbox" value="drinking_water"> 飲水機</label>
-    <label><input type="checkbox" value="convenience"> 便利商店</label>
-    <label><input type="checkbox" value="park"> 公園</label>
-    <label><input type="checkbox" value="marketplace"> 市場</label>
-    <label>搜尋範圍：<input type="number" id="radius" value="500"> 公尺</label>
-    <button id="search">搜尋附近</button>
-    <button id="route">規劃路線（單點）</button>
-    <button id="routeAll">規劃到所有搜尋結果</button>
-  </div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script>
-    // 初始化地圖
-    const map = L.map('map').setView([25.033, 121.565], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap 貢獻者'
-    }).addTo(map);
-
-    // Icons
-    const icons = {
-      drinking_water: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/819/819865.png', iconSize: [28, 28] }),
-      convenience:   L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/3075/3075977.png', iconSize: [28, 28] }),
-      park:          L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/427/427735.png', iconSize: [28, 28] }),
-      marketplace:   L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2331/2331953.png', iconSize: [28, 28] }),
-      person:        L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/1077/1077012.png', iconSize: [32, 32] }) // 目前位置
-    };
-
-    let userMarker;
-    let resultMarkers = [];
-    let routeLayer;
-
-    // 取得目前位置
-    map.locate({ setView: true, maxZoom: 16 });
-    map.on('locationfound', (e) => {
-      if (userMarker) map.removeLayer(userMarker);
-      userMarker = L.marker(e.latlng, { icon: icons.person }).addTo(map).bindPopup("你的位置");
-    });
-
-    // 搜尋 OSM 資料
-    document.getElementById("search").onclick = async () => {
-      const radius = document.getElementById("radius").value;
-      const selected = Array.from(document.querySelectorAll(".controls input[type=checkbox]:checked"))
-                        .map(cb => cb.value);
-
-      // 清除舊結果
-      resultMarkers.forEach(m => map.removeLayer(m));
-      resultMarkers = [];
-
-      if (!userMarker) { alert("尚未取得定位"); return; }
-      const { lat, lng } = userMarker.getLatLng();
-
-      for (let key of selected) {
-        const url = `https://overpass-api.de/api/interpreter?data=[out:json];node[amenity=${key}](around:${radius},${lat},${lng});out;`;
-        const res = await fetch(url);
-        const data = await res.json();
-        data.elements.forEach(el => {
-          const marker = L.marker([el.lat, el.lon], { icon: icons[key] })
-            .addTo(map).bindPopup(key);
-          resultMarkers.push(marker);
-        });
-      }
-
-      if (resultMarkers.length === 0) alert("範圍內沒有找到設施");
-    };
-
-    // 規劃單點路線
-    document.getElementById("route").onclick = async () => {
-      if (!userMarker || resultMarkers.length === 0) { alert("請先搜尋"); return; }
-      const start = userMarker.getLatLng();
-      const end = resultMarkers[0].getLatLng();
-
-      const url = `https://router.project-osrm.org/route/v1/foot/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.code !== "Ok") { alert("路線規劃失敗"); return; }
-
-      if (routeLayer) map.removeLayer(routeLayer);
-      routeLayer = L.geoJSON(data.routes[0].geometry).addTo(map);
-      map.fitBounds(routeLayer.getBounds());
-    };
-
-    // 規劃多點路線
-    document.getElementById("routeAll").onclick = async () => {
-      if (!userMarker || resultMarkers.length === 0) { alert("請先搜尋"); return; }
-      const start = userMarker.getLatLng();
-      const coords = [start, ...resultMarkers.map(m => m.getLatLng())];
-
-      let routeCoords = [];
-      for (let i = 0; i < coords.length - 1; i++) {
-        const a = coords[i], b = coords[i+1];
-        const url = `https://router.project-osrm.org/route/v1/foot/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === "Ok") {
-          routeCoords.push(...data.routes[0].geometry.coordinates);
-        }
-      }
-
-      if (routeCoords.length > 0) {
-        if (routeLayer) map.removeLayer(routeLayer);
-        routeLayer = L.geoJSON({ type: "LineString", coordinates: routeCoords }, {
-          style: { color: "blue", weight: 4 }
-        }).addTo(map);
-        map.fitBounds(routeLayer.getBounds());
-      } else {
-        alert("無法規劃完整路線");
-      }
-    };
-  </script>
-</body>
-</html>
+  });
+</script>
