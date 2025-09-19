@@ -43,12 +43,12 @@
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // 使用者位置 icon（全身人）
+    // 使用者位置 icon（小黃人）
     const userIcon = L.icon({
-      iconUrl: "https://openmoji.org/data/color/svg/1F9D1.svg", // 🧑 全身人
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
-      popupAnchor: [0, -40]
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/943/943579.png", // 小黃人全身
+      iconSize: [50, 50],      // 調整大小
+      iconAnchor: [25, 50],    // 底部對齊腳的位置
+      popupAnchor: [0, -50]    // 提示框往上移
     });
 
     // 使用者位置
@@ -57,7 +57,7 @@
       const lat = pos.coords.latitude;
       const lon = pos.coords.longitude;
       if (!userMarker) {
-        userMarker = L.marker([lat, lon], { icon: userIcon }).addTo(map).bindPopup("你在這裡");
+        userMarker = L.marker([lat, lon], { icon: userIcon }).addTo(map).bindPopup("你在這裡 🟡");
         map.setView([lat, lon], 16);
       } else {
         userMarker.setLatLng([lat, lon]);
