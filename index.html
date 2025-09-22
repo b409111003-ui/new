@@ -39,7 +39,10 @@ const map = L.map("map",{zoomControl:false}).setView([25.033964,121.564468],15);
 L.control.zoom({position:"bottomright"}).addTo(map);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
 
-const minionIcon=L.icon({iconUrl:"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f9d1-1f3fc.svg",iconSize:[48,48],iconAnchor:[24,48],popupAnchor:[0,-48]});
+const minionIcon=L.icon({
+  iconUrl:"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f9d1-1f3fc.svg",
+  iconSize:[48,48], iconAnchor:[24,48], popupAnchor:[0,-48]
+});
 
 const icons = {
   water:L.icon({iconUrl:"https://cdn-icons-png.flaticon.com/512/2910/2910768.png",iconSize:[30,30]}),
@@ -100,8 +103,26 @@ document.getElementById("searchBtn").addEventListener("click",()=>{
         else if(el.tags.amenity==="marketplace") matchedType="market";
         else if(el.tags.leisure==="park") matchedType="park";
       }
+
+      // 計算距離
+      const distance=Math.round(map.distance([userLat,userLon],[lat,lon]));
+
+      // popup內容
+      let description="";
+      if(matchedType==="park") description="平地休憩園區";
+      else if(matchedType==="water") description="提供飲水";
+      else if(matchedType==="convenience") description="便利商店";
+      else if(matchedType==="market") description="可購買小吃";
+
       const marker=L.marker([lat,lon],{icon:matchedType?icons[matchedType]:undefined}).addTo(map);
-      marker.bindPopup(`<b>${el.tags.name||matchedType||"地點"}</b><br>建議休息點，可坐下休息<br><button onclick="routeTo(${lat},${lon})">導航</button>`);
+      marker.bindPopup(
+        `<b>${el.tags.name||matchedType||"地點"}</b><br>` +
+        `類型: ${matchedType||"未知"}<br>` +
+        `可坐下休息: 是<br>` +
+        `距離: ${distance} 公尺<br>` +
+        `${description}<br>` +
+        `<button onclick="routeTo(${lat},${lon})">導航</button>`
+      );
       searchMarkers.push(marker);
     });
   }).catch(err=>{console.error(err); alert("查詢失敗");});
@@ -115,7 +136,9 @@ function routeTo(destLat,destLon){
   fetch(url).then(r=>r.json()).then(data=>{
     if(!data.routes||data.routes.length===0){alert("無法規劃路線"); return;}
     const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
-    // 分段 400公尺作為休息點
+    routeLine=L.polyline(coords,{color:"blue",weight:5}).addTo(map);
+    
+    // 分段 400 公尺作為休息點
     const segmentDistance=0.4; // km
     let segmentPoints=[coords[0]];
     let accDist=0;
@@ -126,12 +149,12 @@ function routeTo(destLat,destLon){
       if(accDist>=segmentDistance){ segmentPoints.push(cur); accDist=0; }
     }
     segmentPoints.push(coords[coords.length-1]);
-    routeLine=L.polyline(coords,{color:"blue",weight:5}).addTo(map);
 
-    // 標示休息點並依類別圖示
+    // 標示休息點
     segmentPoints.forEach(p=>{
       const restMarker=L.circleMarker(p,{radius:6,color:"green",fillColor:"green",fillOpacity:0.8}).addTo(map);
-      restMarker.bindPopup("建議休息點，可坐下休息");
+      const distFromStart=Math.round(map.distance([userLat,userLon],p));
+      restMarker.bindPopup(`建議休息點<br>距離起點: ${distFromStart} 公尺<br>可坐下休息`);
     });
 
     map.fitBounds(routeLine.getBounds());
@@ -140,4 +163,3 @@ function routeTo(destLat,destLon){
 </script>
 </body>
 </html>
-
