@@ -150,14 +150,14 @@
           }
 
           const marker = L.marker([lat, lon], { icon: matchedType ? icons[matchedType]:undefined }).addTo(map);
-          marker.bindPopup(`<b>${el.tags.name||matchedType||"地點"}</b><br><button onclick="routeTo(${lat},${lon})">導航(無障礙)</button>`);
+          marker.bindPopup(`<b>${el.tags.name||matchedType||"地點"}</b><br><button onclick="routeTo(${lat},${lon})">導航</button>`);
           searchMarkers.push(marker);
         });
       })
       .catch(err => { console.error(err); alert("查詢失敗，請稍後再試"); });
     });
 
-    // 無障礙路線規劃
+    // 普通步行路線 (不使用 wheelchair)
     window.routeTo = function(destLat, destLon) {
       if (!userLat || !userLon) { alert("尚未取得使用者位置"); return; }
       if (routeLine) map.removeLayer(routeLine);
@@ -169,10 +169,7 @@
         coordinates: [
           [userLon, userLat],
           [destLon, destLat]
-        ],
-        options: {
-          profile_params: { wheelchair: true }
-        }
+        ]
       };
 
       fetch(url, {
@@ -185,7 +182,7 @@
       })
       .then(r => r.json())
       .then(data => {
-        if (!data.features || data.features.length===0) { alert("無法規劃無障礙路線"); return; }
+        if (!data.features || data.features.length===0) { alert("無法規劃路線"); return; }
         const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
         routeLine = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
         map.fitBounds(routeLine.getBounds());
