@@ -188,7 +188,7 @@
       });
     });
 
-    // 無障礙路線規劃
+    // 無障礙路線規劃 (OpenRouteService)
     window.routeTo = function(destLat, destLon) {
       if (!userLat || !userLon) {
         alert("尚未取得使用者位置");
@@ -198,25 +198,37 @@
         map.removeLayer(routeLine);
       }
 
-      const url = `https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${destLon},${destLat}?overview=full&geometries=geojson&annotations=surface&wheelchair=yes`;
+      const apiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjFiNjY0MmZiMWI4NDQ0MDQ5ZjhkZGQ1NWI4MGFhZTRhIiwiaCI6Im11cm11cjY0In0=";  // 
+      const url = "https://api.openrouteservice.org/v2/directions/foot-walking";
 
-      fetch(url)
-        .then(r => r.json())
-        .then(data => {
-          if (!data.routes || data.routes.length === 0) {
-            alert("無法規劃無障礙路線");
-            return;
-          }
-          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          routeLine = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
-          map.fitBounds(routeLine.getBounds());
-        })
-        .catch(err => {
-          console.error(err);
-          alert("路線規劃失敗");
-        });
+      const body = {
+        coordinates: [
+          [userLon, userLat],
+          [destLon, destLat]
+        ],
+        options: { wheelchair: true }
+      };
+
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": apiKey },
+        body: JSON.stringify(body)
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.features || data.features.length === 0) {
+          alert("無法規劃無障礙路線");
+          return;
+        }
+        const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+        routeLine = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
+        map.fitBounds(routeLine.getBounds());
+      })
+      .catch(err => {
+        console.error(err);
+        alert("路線規劃失敗");
+      });
     };
   </script>
 </body>
 </html>
-
