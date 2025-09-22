@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<title>高齡者友善散步地圖 (ORS)</title>
+<title>社區散步友善地圖</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <style>
@@ -20,7 +20,9 @@ body, html {margin:0; padding:0; height:100%;}
   <label><input type="checkbox" value="convenience"> 便利商店</label>
   <label><input type="checkbox" value="market"> 市場</label>
   <label><input type="checkbox" value="park"> 公園</label>
-  <label>搜尋半徑 (公尺)：<input type="number" id="radiusInput" value="500" min="100" step="100"></label>
+  <label>搜尋半徑 (公尺)：
+    <input type="number" id="radiusInput" value="500" min="100" step="100">
+  </label>
   <button id="searchBtn">搜尋附近</button>
 </div>
 
@@ -33,7 +35,7 @@ const map = L.map("map",{zoomControl:false}).setView([25.033964,121.564468],15);
 L.control.zoom({position:"bottomright"}).addTo(map);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
 
-// -------- 使用者位置 icon --------
+// -------- 使用者 icon --------
 const minionIcon = L.icon({
   iconUrl:"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f9d1-1f3fc.svg",
   iconSize:[48,48], iconAnchor:[24,48], popupAnchor:[0,-48]
@@ -63,7 +65,7 @@ const categories = {
   water:'node["amenity"="drinking_water"](around:RADIUS,LAT,LON);',
   convenience:'node["shop"="convenience"](around:RADIUS,LAT,LON);',
   market:'node["amenity"="marketplace"](around:RADIUS,LAT,LON);',
-  park:'way["leisure"="park"](around:RADIUS,LAT,LON);node["amenity"="bench"](around:RADIUS,LAT,LON);'
+  park:'way["leisure"="park"](around:RADIUS,LAT,LON);'
 };
 
 // -------- 組合 Overpass Query --------
@@ -87,7 +89,7 @@ document.getElementById("searchBtn").addEventListener("click",()=>{
   if(isNaN(radius)||radius<=0) radius=500;
 
   const query=buildOverpassQuery(userLat,userLon,radius,checked);
-  if(!query){alert("請先選擇要搜尋的類別"); return;}
+  if(!query){alert("請先選擇類別"); return;}
 
   searchMarkers.forEach(m=>map.removeLayer(m)); searchMarkers=[];
   if(routeLine) map.removeLayer(routeLine);
@@ -104,82 +106,34 @@ document.getElementById("searchBtn").addEventListener("click",()=>{
         if(el.tags.amenity==="drinking_water") matchedType="water";
         else if(el.tags.shop==="convenience") matchedType="convenience";
         else if(el.tags.amenity==="marketplace") matchedType="market";
-        else if(el.tags.leisure==="park" || el.tags.amenity==="bench") matchedType="park";
+        else if(el.tags.leisure==="park") matchedType="park";
       }
 
       const distance=Math.round(map.distance([userLat,userLon],[lat,lon]));
-      let description="";
-      if(matchedType==="park") description="平地休憩園區 / 有座椅";
-      else if(matchedType==="water") description="提供飲水 / 附近可坐";
-      else if(matchedType==="convenience") description="便利商店 / 可坐休息";
-      else if(matchedType==="market") description="市場 / 可短暫休息";
-
       const marker=L.marker([lat,lon],{icon:matchedType?icons[matchedType]:undefined}).addTo(map);
-      marker.bindPopup(
-        `<b>${el.tags.name||matchedType||"地點"}</b><br>`+
-        `類型: ${matchedType||"未知"}<br>`+
-        `可坐下休息: 是<br>`+
-        `距離起點: ${distance} 公尺<br>`+
-        `${description}<br>`+
-        `<button onclick="routeTo(${lat},${lon})">導航</button>`
-      );
+      marker.bindPopup(`<b>${el.tags.name||matchedType||"地點"}</b><br>類型:${matchedType||"未知"}<br>距離起點:${distance}公尺<br><button onclick="routeTo(${lat},${lon})">導航</button>`);
       searchMarkers.push(marker);
     });
   }).catch(err=>{console.error(err); alert("查詢失敗");});
 });
 
-// -------- 路線規劃 (ORS) --------
-const orsApiKey="你的ORS_Basic_Key_放這裡";  // <-- 記得換成你的 Key
-
+// -------- 路線規劃 (OSRM) --------
 function routeTo(destLat,destLon){
   if(!userLat||!userLon){alert("尚未取得位置"); return;}
   if(routeLine) map.removeLayer(routeLine);
 
-  const url="https://api.openrouteservice.org/v2/directions/foot-walking";
-  const body={ 
-    coordinates: [
-      [userLon,userLat],
-      [destLon,destLat]
-    ],
-    preference:"shortest",
-    options: {avoid_features:["steps"]}
-  };
-
-  fetch(url,{
-    method:"POST",
-    headers:{
-      "Authorization": orsApiKey,
-      "Content-Type":"application/json"
-    },
-    body: JSON.stringify(body)
-  })
-  .then(r=>r.json())
-  .then(data=>{
-    if(!data.features||data.features.length===0){alert("無法規劃路線"); return;}
-    const coords=data.features[0].geometry.coordinates.map(c=>[c[1],c[0]]);
-    routeLine=L.polyline(coords,{color:"blue",weight:5}).addTo(map);
-
-    // 每 300 公尺建議休息點
-    let segmentDist=0.3; // km
-    let points=[coords[0]]; let accDist=0;
-    for(let i=1;i<coords.length;i++){
-      const prev=coords[i-1]; const cur=coords[i];
-      const d=Math.sqrt(Math.pow(prev[0]-cur[0],2)+Math.pow(prev[1]-cur[1],2))*111;
-      accDist+=d;
-      if(accDist>=segmentDist){points.push(cur); accDist=0;}
-    }
-    points.push(coords[coords.length-1]);
-    points.forEach(p=>{
-      const restMarker=L.circleMarker(p,{radius:6,color:"green",fillColor:"green",fillOpacity:0.8}).addTo(map);
-      const distFromStart=Math.round(map.distance([userLat,userLon],p));
-      restMarker.bindPopup(`建議休息點<br>距離起點: ${distFromStart} 公尺<br>可坐下休息`);
-    });
-
-    map.fitBounds(routeLine.getBounds());
-  }).catch(err=>{console.error(err); alert("路線規劃失敗");});
+  const url=`https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${destLon},${destLat}?overview=full&geometries=geojson&steps=true`;
+  fetch(url)
+    .then(r=>r.json())
+    .then(data=>{
+      if(!data.routes||data.routes.length===0){alert("無法規劃路線"); return;}
+      const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+      routeLine=L.polyline(coords,{color:"blue",weight:5}).addTo(map);
+      map.fitBounds(routeLine.getBounds());
+    })
+    .catch(err=>{console.error(err); alert("路線規劃失敗");});
 }
 </script>
 </body>
 </html>
-
 
