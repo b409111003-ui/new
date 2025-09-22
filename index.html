@@ -2,130 +2,62 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>社區散步友善地圖</title>
+  <title>小黃人定位地圖</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
-    :root { --accent:#2c7be5; }
-    body,html {margin:0; height:100%; display:flex; flex-direction:column;}
-    #map {flex:1;}
-    #controls {
-      padding:10px; background:#fff; border-top:1px solid #ccc;
-      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-    }
-    button, select, input {
-      padding:6px 10px; border:1px solid #ccc; border-radius:6px;
-      background:#f8f9fa; cursor:pointer;
-    }
-    button:hover { background:#e2e6ea; }
+    body, html { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="controls">
-    <label>搜尋類型:
-      <select id="typeSelect">
-        <option value="drinking_water">飲水機</option>
-        <option value="marketplace">市場</option>
-        <option value="convenience">便利商店</option>
-      </select>
-    </label>
-    <label>搜尋範圍(公尺):
-      <input type="number" id="radiusInput" value="500" min="100" step="100">
-    </label>
-    <button onclick="searchNearby()">搜尋附近</button>
-  </div>
 
-<script>
-  // 建立地圖
-  const map = L.map('map').setView([25.0330, 121.5654], 15);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom:19, attribution:'© OpenStreetMap'
-  }).addTo(map);
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    // 建立地圖，預設在台北
+    const map = L.map("map").setView([25.033964, 121.564468], 15);
 
-  let userMarker, userLatLng;
+    // 加入 OpenStreetMap 圖資
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
 
-  // Icon 設定
-  const icons = {
-    user: L.icon({
-      iconUrl:"https://cdn-icons-png.flaticon.com/512/9431/9431134.png", // 小黃人全身
-      iconSize:[50,50], iconAnchor:[25,50]
-    }),
-    drinking_water: L.icon({
-      iconUrl:"https://cdn-icons-png.flaticon.com/512/2909/2909823.png", // 水滴
-      iconSize:[32,32], iconAnchor:[16,32]
-    }),
-    marketplace: L.icon({
-      iconUrl:"https://cdn-icons-png.flaticon.com/512/415/415733.png", // 蘋果
-      iconSize:[32,32], iconAnchor:[16,32]
-    }),
-    convenience: L.icon({
-      iconUrl:"https://cdn-icons-png.flaticon.com/512/806/806463.png", // 便利商店
-      iconSize:[32,32], iconAnchor:[16,32]
-    })
-  };
-
-  // 使用者定位
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      userLatLng = [pos.coords.latitude, pos.coords.longitude];
-      map.setView(userLatLng, 16);
-      userMarker = L.marker(userLatLng,{icon:icons.user}).addTo(map)
-        .bindPopup("你在這裡").openPopup();
+    // 小黃人 icon
+    const minionIcon = L.icon({
+      iconUrl: "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f9d1-1f3fc.svg", 
+      iconSize: [48, 48],
+      iconAnchor: [24, 48],
+      popupAnchor: [0, -48]
     });
-  }
 
-  // 搜尋附近地點
-  async function searchNearby(){
-    if(!userLatLng){ alert("尚未取得定位"); return; }
-    const type=document.getElementById("typeSelect").value;
-    const radius=parseInt(document.getElementById("radiusInput").value);
+    // 使用者位置
+    let userMarker;
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
 
-    const query=`
-      [out:json];
-      (
-        node["amenity"="${type}"](around:${radius},${userLatLng[0]},${userLatLng[1]});
-        way["amenity"="${type}"](around:${radius},${userLatLng[0]},${userLatLng[1]});
-        relation["amenity"="${type}"](around:${radius},${userLatLng[0]},${userLatLng[1]});
-      );
-      out center;
-    `;
-    try{
-      const res=await fetch("https://overpass-api.de/api/interpreter",{
-        method:"POST", body:query
-      });
-      const data=await res.json();
-      data.elements.forEach(el=>{
-        const lat=el.lat || el.center?.lat;
-        const lon=el.lon || el.center?.lon;
-        if(lat && lon){
-          L.marker([lat,lon],{icon:icons[type]}).addTo(map)
-            .bindPopup(
-              `<b>${el.tags.name || type}</b><br>
-               <button onclick="routeTo(${lat},${lon})">導航（無障礙）</button>`
-            );
+        if (!userMarker) {
+          userMarker = L.marker([lat, lon], { icon: minionIcon })
+            .addTo(map)
+            .bindPopup("你在這裡 🟡");
+          map.setView([lat, lon], 16);
+        } else {
+          userMarker.setLatLng([lat, lon]);
         }
+      }, err => {
+        console.error("定位失敗：", err);
       });
-    }catch(err){
-      console.error(err);
-      alert("搜尋失敗");
+    } else {
+      alert("此瀏覽器不支援定位功能。");
     }
-  }
-
-  // 無障礙路線規劃
-  async function routeTo(lat,lon){
-    if(!userLatLng){ alert("尚未取得定位"); return; }
-    const url=`https://router.project-osrm.org/route/v1/foot/${userLatLng[1]},${userLatLng[0]};${lon},${lat}?overview=full&geometries=geojson`;
-    const res=await fetch(url);
-    const data=await res.json();
-    if(data.routes.length){
-      const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
-      L.polyline(coords,{color:"blue",weight:5,opacity:0.7}).addTo(map);
-      map.fitBounds(L.polyline(coords).getBounds());
-    }
-  }
-</script>
+  </script>
 </body>
 </html>
+
 
