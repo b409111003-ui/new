@@ -1,156 +1,143 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8">
-  <title>社區散步友善地圖</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<title>社區散步友善地圖</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-  <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
-    #map { width: 100%; height: 100%; }
-    .controls {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: white;
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      z-index: 1000;
-      font-size: 14px;
-    }
-    .controls label { display: block; margin: 4px 0; }
-    .controls input, .controls button { margin-top: 6px; }
-    .controls button {
-      padding: 4px 8px;
-      border-radius: 6px;
-      border: none;
-      background: #4CAF50;
-      color: white;
-      cursor: pointer;
-    }
-  </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<style>
+  body, html { margin:0; padding:0; height:100%; }
+  #map { width:100%; height:100%; }
+  .controls {
+    position:absolute; top:10px; left:10px;
+    background:white; padding:10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.2);
+    z-index:1000; font-size:14px;
+  }
+  .controls label{ display:block; margin:4px 0;}
+  .controls input, .controls button{ margin-top:6px;}
+  .controls button{
+    padding:4px 8px; border-radius:6px; border:none; background:#4CAF50; color:white; cursor:pointer;
+  }
+</style>
 </head>
 <body>
-  <div class="controls">
-    <label><input type="checkbox" value="water"> 飲水機</label>
-    <label><input type="checkbox" value="convenience"> 便利商店</label>
-    <label><input type="checkbox" value="market"> 市場</label>
-    <label><input type="checkbox" value="park"> 公園</label>
-    <label>搜尋半徑 (公尺)：<input type="number" id="radiusInput" value="500" min="100"></label>
-    <button id="searchBtn">搜尋附近</button>
-  </div>
+<div class="controls">
+  <label><input type="checkbox" value="water"> 飲水機</label>
+  <label><input type="checkbox" value="convenience"> 便利商店</label>
+  <label><input type="checkbox" value="market"> 市場</label>
+  <label><input type="checkbox" value="park"> 公園</label>
+  <label>搜尋半徑 (公尺)：<input type="number" id="radiusInput" value="500" min="100" step="100"></label>
+  <button id="searchBtn">搜尋附近</button>
+</div>
 
-  <div id="map"></div>
+<div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script>
-    const map = L.map("map", { zoomControl: false }).setView([25.033964, 121.564468], 15);
-    L.control.zoom({ position: "bottomright" }).addTo(map);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+const map = L.map("map",{zoomControl:false}).setView([25.033964,121.564468],15);
+L.control.zoom({position:"bottomright"}).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
 
-    const minionIcon = L.icon({
-      iconUrl: "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f9d1-1f3fc.svg",
-      iconSize: [48,48], iconAnchor:[24,48], popupAnchor:[0,-48]
-    });
+const minionIcon=L.icon({iconUrl:"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f9d1-1f3fc.svg",iconSize:[48,48],iconAnchor:[24,48],popupAnchor:[0,-48]});
 
-    const icons = {
-      water: L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/2910/2910768.png", iconSize:[30,30]}),
-      convenience: L.icon({ iconUrl:"https://openmoji.org/data/color/svg/1F3EA.svg", iconSize:[30,30]}),
-      market: L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/415/415682.png", iconSize:[30,30]}),
-      park: L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/427/427735.png", iconSize:[30,30]})
-    };
+const icons = {
+  water:L.icon({iconUrl:"https://cdn-icons-png.flaticon.com/512/2910/2910768.png",iconSize:[30,30]}),
+  convenience:L.icon({iconUrl:"https://openmoji.org/data/color/svg/1F3EA.svg",iconSize:[30,30]}),
+  market:L.icon({iconUrl:"https://cdn-icons-png.flaticon.com/512/415/415682.png",iconSize:[30,30]}),
+  park:L.icon({iconUrl:"https://cdn-icons-png.flaticon.com/512/427/427735.png",iconSize:[30,30]})
+};
 
-    let userMarker, userLat, userLon;
-    navigator.geolocation.watchPosition(pos => {
-      userLat = pos.coords.latitude;
-      userLon = pos.coords.longitude;
-      if(!userMarker){
-        userMarker = L.marker([userLat,userLon],{icon:minionIcon}).addTo(map).bindPopup("你在這裡 🟡");
-        map.setView([userLat,userLon],16);
-      } else { userMarker.setLatLng([userLat,userLon]); }
-    }, err => { console.error("定位失敗", err); });
+let userMarker,userLat,userLon;
+navigator.geolocation.watchPosition(pos=>{
+  userLat=pos.coords.latitude; userLon=pos.coords.longitude;
+  if(!userMarker){
+    userMarker=L.marker([userLat,userLon],{icon:minionIcon}).addTo(map).bindPopup("你在這裡 🟡");
+    map.setView([userLat,userLon],16);
+  } else userMarker.setLatLng([userLat,userLon]);
+},err=>{console.error("定位失敗",err);});
 
-    const categories = {
-      water:'node["amenity"="drinking_water"](around:RADIUS,LAT,LON);',
-      convenience:'node["shop"="convenience"](around:RADIUS,LAT,LON);',
-      market:'node["amenity"="marketplace"](around:RADIUS,LAT,LON);',
-      park:'way["leisure"="park"](around:RADIUS,LAT,LON);'
-    };
+const categories={
+  water:'node["amenity"="drinking_water"](around:RADIUS,LAT,LON);',
+  convenience:'node["shop"="convenience"](around:RADIUS,LAT,LON);',
+  market:'node["amenity"="marketplace"](around:RADIUS,LAT,LON);',
+  park:'way["leisure"="park"](around:RADIUS,LAT,LON);'
+};
 
-    function buildOverpassQuery(lat,lon,radius,selections){
-      if(!selections || selections.length===0) return null;
-      let body='[out:json][timeout:25];(';
-      for(const sel of selections){
-        let f=categories[sel].replace(/RADIUS/g,radius).replace(/LAT/g,lat).replace(/LON/g,lon);
-        body+="\n"+f;
+function buildOverpassQuery(lat,lon,radius,selections){
+  if(!selections||selections.length===0) return null;
+  let body='[out:json][timeout:25];(';
+  for(const sel of selections){
+    let f=categories[sel].replace(/RADIUS/g,radius).replace(/LAT/g,lat).replace(/LON/g,lon);
+    body+="\n"+f;
+  }
+  body+='\n);out center;';
+  return body;
+}
+
+let searchMarkers=[]; let routeLine;
+
+document.getElementById("searchBtn").addEventListener("click",()=>{
+  if(!userMarker){alert("尚未取得定位"); return;}
+  const checked=Array.from(document.querySelectorAll("input[type=checkbox]:checked")).map(c=>c.value);
+  let radius=parseInt(document.getElementById("radiusInput").value);
+  if(isNaN(radius)||radius<=0) radius=500;
+  const query=buildOverpassQuery(userLat,userLon,radius,checked);
+  if(!query){alert("請先選擇要搜尋的類別"); return;}
+
+  searchMarkers.forEach(m=>map.removeLayer(m)); searchMarkers=[];
+  if(routeLine) map.removeLayer(routeLine);
+
+  fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(query)})
+  .then(r=>r.json()).then(data=>{
+    data.elements.forEach(el=>{
+      const lat=el.lat||el.center?.lat; const lon=el.lon||el.center?.lon;
+      if(!lat||!lon) return;
+      let matchedType=null;
+      if(el.tags){
+        if(el.tags.amenity==="drinking_water") matchedType="water";
+        else if(el.tags.shop==="convenience") matchedType="convenience";
+        else if(el.tags.amenity==="marketplace") matchedType="market";
+        else if(el.tags.leisure==="park") matchedType="park";
       }
-      body+='\n);out center;';
-      return body;
+      const marker=L.marker([lat,lon],{icon:matchedType?icons[matchedType]:undefined}).addTo(map);
+      marker.bindPopup(`<b>${el.tags.name||matchedType||"地點"}</b><br>建議休息點，可坐下休息<br><button onclick="routeTo(${lat},${lon})">導航</button>`);
+      searchMarkers.push(marker);
+    });
+  }).catch(err=>{console.error(err); alert("查詢失敗");});
+});
+
+function routeTo(destLat,destLon){
+  if(!userLat||!userLon){alert("尚未取得使用者位置"); return;}
+  if(routeLine) map.removeLayer(routeLine);
+
+  const url=`https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${destLon},${destLat}?overview=full&geometries=geojson`;
+  fetch(url).then(r=>r.json()).then(data=>{
+    if(!data.routes||data.routes.length===0){alert("無法規劃路線"); return;}
+    const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    // 分段 400公尺作為休息點
+    const segmentDistance=0.4; // km
+    let segmentPoints=[coords[0]];
+    let accDist=0;
+    for(let i=1;i<coords.length;i++){
+      const prev=coords[i-1]; const cur=coords[i];
+      const d=Math.sqrt(Math.pow(prev[0]-cur[0],2)+Math.pow(prev[1]-cur[1],2))*111;
+      accDist+=d;
+      if(accDist>=segmentDistance){ segmentPoints.push(cur); accDist=0; }
     }
+    segmentPoints.push(coords[coords.length-1]);
+    routeLine=L.polyline(coords,{color:"blue",weight:5}).addTo(map);
 
-    let searchMarkers = [];
-    let routeLine;
-
-    document.getElementById("searchBtn").addEventListener("click",()=>{
-      if(!userMarker){alert("尚未取得定位"); return;}
-      const checked=Array.from(document.querySelectorAll("input[type=checkbox]:checked")).map(c=>c.value);
-      const radius=parseInt(document.getElementById("radiusInput").value)||500;
-      const query=buildOverpassQuery(userLat,userLon,radius,checked);
-      if(!query){alert("請先選擇要搜尋的類別"); return;}
-
-      searchMarkers.forEach(m=>map.removeLayer(m)); searchMarkers=[];
-      if(routeLine) map.removeLayer(routeLine);
-
-      fetch("https://overpass-api.de/api/interpreter",{method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:"data="+encodeURIComponent(query)})
-      .then(r=>r.json())
-      .then(data=>{
-        data.elements.forEach(el=>{
-          const lat=el.lat||el.center?.lat; const lon=el.lon||el.center?.lon;
-          if(!lat||!lon) return;
-          let matchedType=null;
-          if(el.tags){
-            if(el.tags.amenity==="drinking_water") matchedType="water";
-            else if(el.tags.shop==="convenience") matchedType="convenience";
-            else if(el.tags.amenity==="marketplace") matchedType="market";
-            else if(el.tags.leisure==="park") matchedType="park";
-          }
-          const marker=L.marker([lat,lon],{icon:matchedType?icons[matchedType]:undefined}).addTo(map);
-          marker.bindPopup(`<b>${el.tags.name||matchedType||"地點"}</b><br><button onclick="routeTo(${lat},${lon})">導航</button>`);
-          searchMarkers.push(marker);
-        });
-      }).catch(err=>{console.error(err); alert("查詢失敗");});
+    // 標示休息點並依類別圖示
+    segmentPoints.forEach(p=>{
+      const restMarker=L.circleMarker(p,{radius:6,color:"green",fillColor:"green",fillOpacity:0.8}).addTo(map);
+      restMarker.bindPopup("建議休息點，可坐下休息");
     });
 
-    function routeTo(destLat,destLon){
-      if(!userLat||!userLon){alert("尚未取得使用者位置"); return;}
-      if(routeLine) map.removeLayer(routeLine);
-
-      const url=`https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${destLon},${destLat}?overview=full&geometries=geojson`;
-      fetch(url).then(r=>r.json()).then(data=>{
-        if(!data.routes||data.routes.length===0){alert("無法規劃路線"); return;}
-        const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
-        // 分段 400公尺作為建議休息點
-        const segmentDistance=0.4; // km
-        let segmentPoints=[coords[0]];
-        let accDist=0;
-        for(let i=1;i<coords.length;i++){
-          const prev=coords[i-1]; const cur=coords[i];
-          const d=Math.sqrt(Math.pow(prev[0]-cur[0],2)+Math.pow(prev[1]-cur[1],2))*111; // km approx
-          accDist+=d;
-          if(accDist>=segmentDistance){ segmentPoints.push(cur); accDist=0; }
-        }
-        segmentPoints.push(coords[coords.length-1]);
-        routeLine=L.polyline(coords,{color:"blue",weight:5}).addTo(map);
-        // 標示休息點
-        segmentPoints.forEach(p=>{
-          L.circleMarker(p,{radius:6,color:"green",fillColor:"green",fillOpacity:0.8}).addTo(map).bindPopup("建議休息點");
-        });
-        map.fitBounds(routeLine.getBounds());
-      }).catch(err=>{console.error(err); alert("路線規劃失敗");});
-    }
-
-  </script>
+    map.fitBounds(routeLine.getBounds());
+  }).catch(err=>{console.error(err); alert("路線規劃失敗");});
+}
+</script>
 </body>
 </html>
+
