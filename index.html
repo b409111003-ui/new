@@ -20,9 +20,7 @@ body, html {margin:0; padding:0; height:100%;}
   <label><input type="checkbox" value="convenience"> 便利商店</label>
   <label><input type="checkbox" value="market"> 市場</label>
   <label><input type="checkbox" value="park"> 公園</label>
-  <label>搜尋半徑 (公尺)：
-    <input type="number" id="radiusInput" value="500" min="100" step="100">
-  </label>
+  <label>搜尋半徑 (公尺)：<input type="number" id="radiusInput" value="500" min="100" step="100"></label>
   <button id="searchBtn">搜尋附近</button>
 </div>
 
@@ -117,12 +115,16 @@ document.getElementById("searchBtn").addEventListener("click",()=>{
   }).catch(err=>{console.error(err); alert("查詢失敗");});
 });
 
-// -------- 路線規劃 (OSRM) --------
+// -------- 路線規劃 (OSRM + 中間點方式) --------
 function routeTo(destLat,destLon){
   if(!userLat||!userLon){alert("尚未取得位置"); return;}
   if(routeLine) map.removeLayer(routeLine);
 
-  const url=`https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${destLon},${destLat}?overview=full&geometries=geojson&steps=true`;
+  // -------- 可選：加入中間點避免繞遠 --------
+  // const midLon = 121.565; const midLat = 25.034; // 如果知道某條街較短，可加這裡
+  // const url = `https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${midLon},${midLat};${destLon},${destLat}?overview=full&geometries=geojson&steps=true`;
+
+  const url = `https://router.project-osrm.org/route/v1/foot/${userLon},${userLat};${destLon},${destLat}?overview=full&geometries=geojson&steps=true`;
   fetch(url)
     .then(r=>r.json())
     .then(data=>{
