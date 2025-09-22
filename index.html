@@ -5,114 +5,127 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>社區散步友善地圖</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
-    #map { height: 100vh; }
-    .controls {
-      position: absolute; top: 10px; left: 10px;
-      background: white; padding: 10px; border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      z-index: 1000; font-size: 14px;
+    :root { --accent:#2c7be5; }
+    body,html {margin:0; height:100%; display:flex; flex-direction:column;}
+    #map {flex:1;}
+    #controls {
+      padding:10px; background:#fff; border-top:1px solid #ccc;
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
     }
-    .controls label { display: block; margin: 4px 0; }
-    .controls input[type="number"] { width: 80px; }
-    .controls button {
-      margin-top: 6px; padding: 4px 8px; border-radius: 6px;
-      border: none; background: #4CAF50; color: white; cursor: pointer;
+    button, select, input {
+      padding:6px 10px; border:1px solid #ccc; border-radius:6px;
+      background:#f8f9fa; cursor:pointer;
     }
+    button:hover { background:#e2e6ea; }
   </style>
 </head>
 <body>
-<div class="controls">
-  <label><input type="checkbox" value="water"> 飲水機</label>
-  <label><input type="checkbox" value="convenience"> 便利商店</label>
-  <label><input type="checkbox" value="market"> 市場</label>
-  <label><input type="checkbox" value="park"> 公園</label>
-  <label>搜尋半徑 (公尺)：<input type="number" id="radiusInput" value="500" min="100" step="100"></label>
-  <button id="searchBtn">搜尋附近</button>
-</div>
-<div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <div id="map"></div>
+  <div id="controls">
+    <label>搜尋類型:
+      <select id="typeSelect">
+        <option value="drinking_water">飲水機</option>
+        <option value="marketplace">市場</option>
+        <option value="convenience">便利商店</option>
+      </select>
+    </label>
+    <label>搜尋範圍(公尺):
+      <input type="number" id="radiusInput" value="500" min="100" step="100">
+    </label>
+    <button onclick="searchNearby()">搜尋附近</button>
+  </div>
+
 <script>
-// 初始化地圖
-const map = L.map('map', { zoomControl: false }).setView([25.0330, 121.5654], 15);
-L.control.zoom({ position: "bottomright" }).addTo(map);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19, attribution: '© OpenStreetMap'
-}).addTo(map);
+  // 建立地圖
+  const map = L.map('map').setView([25.0330, 121.5654], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom:19, attribution:'© OpenStreetMap'
+  }).addTo(map);
 
-// 使用者位置（小黃人 icon）
-const userIcon = L.icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/3089/3089766.png", // 小黃人
-  iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -40]
-});
-let userMarker, userPos;
-navigator.geolocation.watchPosition(pos => {
-  const lat = pos.coords.latitude, lon = pos.coords.longitude;
-  userPos = [lat, lon];
-  if (!userMarker) {
-    userMarker = L.marker(userPos, { icon: userIcon }).addTo(map).bindPopup("你在這裡");
-    map.setView(userPos, 16);
-  } else {
-    userMarker.setLatLng(userPos);
+  let userMarker, userLatLng;
+
+  // Icon 設定
+  const icons = {
+    user: L.icon({
+      iconUrl:"https://cdn-icons-png.flaticon.com/512/9431/9431134.png", // 小黃人全身
+      iconSize:[50,50], iconAnchor:[25,50]
+    }),
+    drinking_water: L.icon({
+      iconUrl:"https://cdn-icons-png.flaticon.com/512/2909/2909823.png", // 水滴
+      iconSize:[32,32], iconAnchor:[16,32]
+    }),
+    marketplace: L.icon({
+      iconUrl:"https://cdn-icons-png.flaticon.com/512/415/415733.png", // 蘋果
+      iconSize:[32,32], iconAnchor:[16,32]
+    }),
+    convenience: L.icon({
+      iconUrl:"https://cdn-icons-png.flaticon.com/512/806/806463.png", // 便利商店
+      iconSize:[32,32], iconAnchor:[16,32]
+    })
+  };
+
+  // 使用者定位
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      userLatLng = [pos.coords.latitude, pos.coords.longitude];
+      map.setView(userLatLng, 16);
+      userMarker = L.marker(userLatLng,{icon:icons.user}).addTo(map)
+        .bindPopup("你在這裡").openPopup();
+    });
   }
-});
 
-// Icon 定義
-const icons = {
-  water: L.icon({ iconUrl: "https://cdn-icons-png.flaticon.com/512/2910/2910768.png", iconSize: [30, 30] }),
-  convenience: L.icon({ iconUrl: "https://openmoji.org/data/color/svg/1F3EA.svg", iconSize: [30, 30] }),
-  market: L.icon({ iconUrl: "https://cdn-icons-png.flaticon.com/512/415/415682.png", iconSize: [30, 30] }),
-  park: L.icon({ iconUrl: "https://cdn-icons-png.flaticon.com/512/427/427735.png", iconSize: [30, 30] })
-};
+  // 搜尋附近地點
+  async function searchNearby(){
+    if(!userLatLng){ alert("尚未取得定位"); return; }
+    const type=document.getElementById("typeSelect").value;
+    const radius=parseInt(document.getElementById("radiusInput").value);
 
-// 分類對應 OSM
-const categories = {
-  water: 'node["amenity"="drinking_water"](around:RADIUS,LAT,LON);',
-  convenience: 'node["shop"="convenience"](around:RADIUS,LAT,LON);',
-  market: 'node["amenity"="marketplace"](around:RADIUS,LAT,LON);',
-  park: 'way["leisure"="park"](around:RADIUS,LAT,LON);'
-};
-
-// 組合 Overpass Query
-function buildOverpassQuery(lat, lon, radius, selections) {
-  if (!selections || selections.length === 0) return null;
-  let body = '[out:json][timeout:25];(';
-  for (const sel of selections) {
-    let fragment = categories[sel];
-    fragment = fragment.replace(/RADIUS/g, radius).replace(/LAT/g, lat).replace(/LON/g, lon);
-    body += "\n" + fragment;
+    const query=`
+      [out:json];
+      (
+        node["amenity"="${type}"](around:${radius},${userLatLng[0]},${userLatLng[1]});
+        way["amenity"="${type}"](around:${radius},${userLatLng[0]},${userLatLng[1]});
+        relation["amenity"="${type}"](around:${radius},${userLatLng[0]},${userLatLng[1]});
+      );
+      out center;
+    `;
+    try{
+      const res=await fetch("https://overpass-api.de/api/interpreter",{
+        method:"POST", body:query
+      });
+      const data=await res.json();
+      data.elements.forEach(el=>{
+        const lat=el.lat || el.center?.lat;
+        const lon=el.lon || el.center?.lon;
+        if(lat && lon){
+          L.marker([lat,lon],{icon:icons[type]}).addTo(map)
+            .bindPopup(
+              `<b>${el.tags.name || type}</b><br>
+               <button onclick="routeTo(${lat},${lon})">導航（無障礙）</button>`
+            );
+        }
+      });
+    }catch(err){
+      console.error(err);
+      alert("搜尋失敗");
+    }
   }
-  body += '\n);out center;';
-  return body;
-}
 
-// 搜尋並顯示
-let searchMarkers = [];
-let currentRoute;
+  // 無障礙路線規劃
+  async function routeTo(lat,lon){
+    if(!userLatLng){ alert("尚未取得定位"); return; }
+    const url=`https://router.project-osrm.org/route/v1/foot/${userLatLng[1]},${userLatLng[0]};${lon},${lat}?overview=full&geometries=geojson`;
+    const res=await fetch(url);
+    const data=await res.json();
+    if(data.routes.length){
+      const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+      L.polyline(coords,{color:"blue",weight:5,opacity:0.7}).addTo(map);
+      map.fitBounds(L.polyline(coords).getBounds());
+    }
+  }
+</script>
+</body>
+</html>
 
-document.getElementById("searchBtn").addEventListener("click", () => {
-  if (!userMarker) { alert("尚未取得定位"); return; }
-  const pos = userMarker.getLatLng();
-  const checked = Array.from(document.querySelectorAll("input[type=checkbox]:checked")).map(c => c.value);
-  const radius = parseInt(document.getElementById("radiusInput").value) || 500;
-  const query = buildOverpassQuery(pos.lat, pos.lng, radius, checked);
-  if (!query) { alert("請先選擇要搜尋的類別"); return; }
-
-  // 清除舊的搜尋結果與路線
-  searchMarkers.forEach(m => map.removeLayer(m));
-  searchMarkers = [];
-  if (currentRoute) { map.removeLayer(currentRoute); currentRoute = null; }
-
-  fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "data=" + encodeURIComponent(query)
-  })
-  .then(r => r.json())
-  .then(data => {
-    data.elements.forEach(el => {
-      const lat = el.lat || el.center?.lat;
-      const lon = el.lon || el.center?.lon;
-      if (!lat || !lon) return;
-
-      let matchedType = null;
-      if (el.tags) {
